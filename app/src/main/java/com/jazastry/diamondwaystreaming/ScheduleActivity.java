@@ -14,8 +14,13 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
+import com.jazastry.diamondwaystreaming.classes.ScheduleXMLParser;
+
+import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ScheduleActivity extends AppCompatActivity {
 
@@ -46,7 +51,7 @@ public class ScheduleActivity extends AppCompatActivity {
             Intent intent = new Intent(this, StreamingActivity.class);
             startActivity(intent);
             return true;
-        } else if (id == R.id.action_home) {
+        }  else if (id == R.id.action_home) {
             Intent intent = new Intent(this, MainActivity.class);
             startActivity(intent);
             return true;
@@ -73,7 +78,16 @@ public class ScheduleActivity extends AppCompatActivity {
                     public void onResponse(String response) {
                         // Display the first 500 characters of the response string.
                         mTextView.setText("Response is: "+ response.substring(0,response.length()));
-                        Log.v("FROm HTTP REQUEST", response);
+                       // Log.v("FROm HTTP REQUEST", response);
+                        List streamingsSchedule = new ArrayList();
+                        try {
+                            ScheduleXMLParser.parse(response.substring(0,response.length()));
+                        } catch (XmlPullParserException e) {
+                            e.printStackTrace();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
                     }
                 }, new Response.ErrorListener() {
             @Override
