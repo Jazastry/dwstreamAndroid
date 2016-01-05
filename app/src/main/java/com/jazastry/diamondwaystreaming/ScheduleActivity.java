@@ -24,7 +24,7 @@ public class ScheduleActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_schedule);
 
-        makeGetRequest();
+       makeGetRequest();
     }
 
     @Override
