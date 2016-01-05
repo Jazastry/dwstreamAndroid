@@ -10,36 +10,49 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.Button;
 import android.widget.EditText;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.security.KeyManagementException;
-import java.util.Scanner;
 
 import javax.net.ssl.HttpsURLConnection;
 
+
 public class SettingsActivity extends AppCompatActivity {
-    private String crsftoken;
+
+    private static final String URL_LOGIN_SUBMIT = "https://sso.dwbn.org/accounts/login/";
+    private String email = "";
+    private String password = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+    }
 
-        final Button button = (Button) findViewById(R.id.submit_button);
-        button.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                // Perform action on click
-                new LoginTask().execute();
-            }
-        });
+    public void onButtonClicked(View view) {
+        // get values of email and password
+        final EditText emailEditText = (EditText) findViewById(R.id.email);
+        final EditText passwordEditText = (EditText) findViewById(R.id.password);
+        email = emailEditText.getText().toString();
+        password = passwordEditText.getText().toString();
+
+
+        if(view.getId() == R.id.submit_button) {
+            new LoginTask().execute();
+        }
+
     }
 
     @Override
@@ -76,58 +89,59 @@ public class SettingsActivity extends AppCompatActivity {
 
     private String getCsrfToken(URLConnection connection) throws IOException, KeyManagementException {
         String cookies = connection.getHeaderField("Set-Cookie");
-        return getCookie("csrftoken", cookies);
+        String crsftokenCookie = getCookie("csrftoken", cookies);
+
+        String[] crsftokenArr = crsftokenCookie.split("=");
+        /*
+        * crsftokenArr = [crsftoken, <actual token value>];
+        * */
+        return crsftokenArr[1];
     }
 
     @TargetApi(Build.VERSION_CODES.GINGERBREAD)
     private Boolean postLoginInfo() throws IOException, KeyManagementException {
         String loginUrl = "https://sso.dwbn.org/accounts/login/";
-        URL url = new URL(loginUrl);
-        HttpsURLConnection urlConnection = (HttpsURLConnection) url.openConnection();
-        CookieManager cookieManager = new CookieManager();
-        CookieHandler.setDefault(cookieManager);
+        HttpsURLConnection urlConnection = null;
+        try {
+            URL url = new URL(loginUrl);
+            urlConnection = (HttpsURLConnection) url.openConnection();
+            CookieManager cookieManager = new CookieManager();
+            CookieHandler.setDefault(cookieManager);
 
-        // get values of email and password
-        final EditText emailEditText = (EditText) findViewById(R.id.email);
-        final EditText passwordEditText = (EditText) findViewById(R.id.password);
-        String email = emailEditText.getText().toString();
-        String password = passwordEditText.getText().toString();
+            // transform to URLencoded string
+            String crsftoken = getCsrfToken(urlConnection);
+            String urlParameters =
+                    "csrfmiddlewaretoken=" + URLEncoder.encode(crsftoken, "UTF-8") +
+                            "&username=" + URLEncoder.encode(email, "UTF-8") +
+                            "&password=" + URLEncoder.encode(password, "UTF-8");
 
-        // transform to URLencoded string
-        String crsftoken = getCsrfToken(urlConnection);
-        String urlParameters =
-                "csrfmiddlewaretoken=" + URLEncoder.encode(crsftoken, "UTF-8") +
-                "username=" + URLEncoder.encode(email, "UTF-8") +
-                "password=" + URLEncoder.encode(password, "UTF-8");
+            urlConnection.disconnect();
+            urlConnection.setDoOutput(true);
+            urlConnection.setChunkedStreamingMode(0);
+            urlConnection.setRequestMethod("POST");
 
-        urlConnection.setRequestMethod("POST");
-        urlConnection.setRequestProperty("Content-Type",
-                "application/x-www-form-urlencoded");
-        urlConnection.setRequestProperty("Content-Length", "" +
-                Integer.toString(urlParameters.getBytes().length));
-        urlConnection.setFixedLengthStreamingMode(urlParameters.getBytes().length);
-        urlConnection.setUseCaches (false);
-        urlConnection.setDoInput(true);
-        urlConnection.setDoOutput(true);
 
-        //send the POST out
-        PrintWriter out = new PrintWriter(urlConnection.getOutputStream());
-        out.print(urlParameters);
-        out.close();
+            OutputStream out = new BufferedOutputStream(urlConnection.getOutputStream());
+            out.write(urlParameters.getBytes());
+            out.flush();
+            out.close();
 
-        //build the string to store the response text from the server
-        String response= "";
+            BufferedInputStream in = new BufferedInputStream(urlConnection.getInputStream());
+            StringBuilder outStrem = new StringBuilder();
+            String line = "";
 
-        //start listening to the stream
-        Scanner inStream = new Scanner(urlConnection.getInputStream());
-
-        //process the stream and store it in StringBuilder
-        while(inStream.hasNextLine()){
-            response+=(inStream.nextLine());
+        } catch (Exception e) {
+            Log.e("login", e.getMessage());
+        } finally {
+            urlConnection.disconnect();
         }
-        Log.v("postLoginInfo : ", response);
+
+
 
         return true;
+    }
+
+    private void writeStream(OutputStream out) {
     }
 
     private class LoginTask extends AsyncTask<Void, Void, Boolean> {
@@ -138,14 +152,14 @@ public class SettingsActivity extends AppCompatActivity {
          * delivers it the parameters given to AsyncTask.execute() */
         protected Boolean doInBackground(Void... params) {
             try {
-                return postLoginInfo();
+                loggedIn = postLoginInfo();
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (KeyManagementException e) {
                 e.printStackTrace();
             }
 
-            return true;
+            return loggedIn;
         }
 
         /** The system calls this to perform work in the UI thread and delivers
