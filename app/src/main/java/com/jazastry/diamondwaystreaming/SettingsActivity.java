@@ -12,8 +12,6 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,17 +19,19 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.CookieHandler;
 import java.net.CookieManager;
+import java.net.CookiePolicy;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.security.KeyManagementException;
-
-import javax.net.ssl.HttpsURLConnection;
-
+import java.util.List;
+import java.util.Map;
 
 public class SettingsActivity extends AppCompatActivity {
 
-    private static final String URL_LOGIN_SUBMIT = "https://sso.dwbn.org/accounts/login/";
+    private static final String URL_LOGIN = "https://sso.dwbn.org/accounts/login/";
+    private static final String CHAR_SET_UTF_8 = "UTF-8";
     private String email = "";
     private String password = "";
 
@@ -99,49 +99,109 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     @TargetApi(Build.VERSION_CODES.GINGERBREAD)
-    private Boolean postLoginInfo() throws IOException, KeyManagementException {
-        String loginUrl = "https://sso.dwbn.org/accounts/login/";
-        HttpsURLConnection urlConnection = null;
-        try {
-            URL url = new URL(loginUrl);
-            urlConnection = (HttpsURLConnection) url.openConnection();
-            CookieManager cookieManager = new CookieManager();
-            CookieHandler.setDefault(cookieManager);
+    private String getLoginCrsfToken() throws IOException, KeyManagementException {
+        HttpURLConnection urlConnection = null;
 
-            // transform to URLencoded string
-            String crsftoken = getCsrfToken(urlConnection);
-            String urlParameters =
-                    "csrfmiddlewaretoken=" + URLEncoder.encode(crsftoken, "UTF-8") +
-                            "&username=" + URLEncoder.encode(email, "UTF-8") +
-                            "&password=" + URLEncoder.encode(password, "UTF-8");
+        //Set the default cookie manager used for all connections.
+        CookieHandler.setDefault(new CookieManager(null, CookiePolicy.ACCEPT_ALL));
 
-            urlConnection.disconnect();
-            urlConnection.setDoOutput(true);
-            urlConnection.setChunkedStreamingMode(0);
-            urlConnection.setRequestMethod("POST");
+        URL url = new URL(URL_LOGIN);
+        urlConnection = (HttpURLConnection) url.openConnection();
 
+        // Get csrf token from Set-Cookie header
+        String csrfToken = getCsrfToken(urlConnection);
 
-            OutputStream out = new BufferedOutputStream(urlConnection.getOutputStream());
-            out.write(urlParameters.getBytes());
-            out.flush();
-            out.close();
+        // transform to URLencoded string
+        String urlParameters =
+                "csrfmiddlewaretoken=" + URLEncoder.encode(csrfToken, CHAR_SET_UTF_8) +
+                        "&username=" + URLEncoder.encode(email, CHAR_SET_UTF_8) +
+                        "&password=" + URLEncoder.encode(password, CHAR_SET_UTF_8);
+        urlConnection.disconnect();
 
-            BufferedInputStream in = new BufferedInputStream(urlConnection.getInputStream());
-            StringBuilder outStrem = new StringBuilder();
-            String line = "";
+        return urlParameters;
+    }
 
-        } catch (Exception e) {
-            Log.e("login", e.getMessage());
-        } finally {
-            urlConnection.disconnect();
+    @TargetApi(Build.VERSION_CODES.KITKAT)
+    private Boolean postLoginInfoUrlConnection() throws IOException, KeyManagementException {
+        String loginUrl = URL_LOGIN;
+
+        HttpURLConnection urlConnection = null;
+
+        //Set the default cookie manager used for all connections.
+        CookieHandler.setDefault(new CookieManager(null, CookiePolicy.ACCEPT_ALL));
+
+        URL url = new URL(loginUrl);
+        urlConnection = (HttpURLConnection) url.openConnection();
+        // Gather all cookies.
+        List<String> cookies = urlConnection.getHeaderFields().get("Set-Cookie");
+
+        // transform to URLencoded string
+        String crsftoken = getCsrfToken(urlConnection);
+        String urlParameters =
+                "csrfmiddlewaretoken=" + URLEncoder.encode(crsftoken, CHAR_SET_UTF_8) +
+                        "&username=" + URLEncoder.encode(email, CHAR_SET_UTF_8) +
+                        "&password=" + URLEncoder.encode(password, CHAR_SET_UTF_8);
+
+        urlConnection = (HttpURLConnection) url.openConnection();
+        urlConnection.setRequestProperty("Accept", "*/*");
+        urlConnection.setRequestProperty("Accept-Encoding", "gzip, deflate");
+        urlConnection.setRequestProperty("User-Agent", "Mozilla/5.0 ( compatible )");
+        urlConnection.setRequestProperty("Transfer-Encoding", "chunked");
+        urlConnection.setRequestProperty("Content-Length", "" + Integer.toString(urlParameters.getBytes().length));
+        urlConnection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        urlConnection.setRequestProperty("Content-Encoding", "UTF-8");
+        urlConnection.setConnectTimeout(5000);
+
+        for (String cookie : cookies) {
+            urlConnection.addRequestProperty("Cookie", cookie.split(";", 2)[0]);
         }
 
+        urlConnection.setUseCaches(false);
+        urlConnection.setInstanceFollowRedirects(false);
+        urlConnection.setDoOutput(true);
+        urlConnection.setRequestMethod("POST");
+//        urlConnection.setDoInput(true);
 
+        String meth = urlConnection.getRequestMethod().toString();
+//            urlConnection.setRequestProperty("Accept-Charset", charSet);
+
+
+        // Write parameters to request.
+//        try (OutputStream output = urlConnection.getOutputStream()) {
+//            output.write(urlParameters.getBytes(CHAR_SET_UTF_8));
+//            output.flush();
+//            output.close();
+//        }
+        OutputStream os = urlConnection.getOutputStream();
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
+        writer.write(urlParameters.toCharArray());
+        writer.flush();
+        writer.close();
+        os.close();
+
+
+        int responseCode = urlConnection.getResponseCode();
+
+        InputStream error = ((HttpURLConnection) urlConnection).getErrorStream();
+        String mess = error.toString();
+
+        // Fire the request.
+        InputStream response = urlConnection.getInputStream();
+
+        StringBuilder headersBuilder = new StringBuilder();
+        for (Map.Entry<String, List<String>> header : urlConnection.getHeaderFields().entrySet()) {
+            headersBuilder.append(header.getKey() + "=" + header.getValue() + "\n\r");
+        }
+        String headers = headersBuilder.toString();
+        Log.v("loginPost-headers : ", headers);
 
         return true;
     }
 
-    private void writeStream(OutputStream out) {
+    private void postLoginHttpClient() {
+//        HttpClient httpClient = new DefaultHttpClient();
+//        // replace with your url
+//        HttpPost httpPost = new HttpPost("www.example.com");
     }
 
     private class LoginTask extends AsyncTask<Void, Void, Boolean> {
@@ -152,7 +212,7 @@ public class SettingsActivity extends AppCompatActivity {
          * delivers it the parameters given to AsyncTask.execute() */
         protected Boolean doInBackground(Void... params) {
             try {
-                loggedIn = postLoginInfo();
+                loggedIn = postLoginInfoUrlConnection();
             } catch (IOException e) {
                 e.printStackTrace();
             } catch (KeyManagementException e) {
