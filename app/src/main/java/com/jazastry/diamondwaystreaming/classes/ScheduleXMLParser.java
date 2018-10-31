@@ -8,6 +8,7 @@ import org.xmlpull.v1.XmlPullParserException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,7 +18,7 @@ import java.util.List;
 public class ScheduleXMLParser {
     private static final String ns = null;
 
-    public static List parse(String inputString) throws XmlPullParserException, IOException {
+    public static List parse(String inputString) throws XmlPullParserException, IOException, ParseException {
         InputStream stream = new ByteArrayInputStream(inputString.getBytes("ISO-8859-1"));
         try {
             XmlPullParser parser = Xml.newPullParser();
@@ -30,7 +31,7 @@ public class ScheduleXMLParser {
         }
     }
 
-    private static List readRssChannel(XmlPullParser parser) throws XmlPullParserException, IOException {
+    private static List readRssChannel(XmlPullParser parser) throws XmlPullParserException, IOException, ParseException {
         List streamingItems = new ArrayList();
         parser.nextTag();
         String name = parser.getName();
@@ -50,7 +51,7 @@ public class ScheduleXMLParser {
         return streamingItems;
     }
 
-    private static StreamingItem readRssChanelItem(XmlPullParser parser) throws XmlPullParserException, IOException {
+    private static StreamingItem readRssChanelItem(XmlPullParser parser) throws XmlPullParserException, IOException, ParseException {
         parser.require(XmlPullParser.START_TAG, ns, "item");
         String title = null;
         String description = null;

@@ -98,7 +98,7 @@ public class SettingsActivity extends AppCompatActivity {
         return crsftokenArr[1];
     }
 
-    @TargetApi(Build.VERSION_CODES.GINGERBREAD)
+    @TargetApi(Build.VERSION_CODES.KITKAT)
     private String getLoginCrsfToken() throws IOException, KeyManagementException {
         HttpURLConnection urlConnection = null;
 
